@@ -1,0 +1,14 @@
+livekit-agents
+livekit-plugins-openai
+livekit-plugins-silero
+livekit-plugins-google
+livekit-plugins-noise-cancellation
+duckduckgo-search
+langchain_community
+requests
+python-dotenv
+fastapi
+uvicorn[standard]
+pydantic
+python-jose[cryptography]
+pyjwt

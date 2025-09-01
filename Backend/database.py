@@ -1,0 +1,282 @@
+import sqlite3
+import hashlib
+import os
+from datetime import datetime
+from typing import Optional, Dict, Any
+import logging
+
+
+class UserDatabase:
+    def __init__(self, db_path: str = "friday_users.db"):
+        self.db_path = db_path
+        self.init_database()
+
+    def init_database(self):
+        """Initialize the database with required tables"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+
+            # Users table
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    email TEXT UNIQUE NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    timezone TEXT DEFAULT 'UTC',
+                    language TEXT DEFAULT 'en',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """
+            )
+
+            # User details table - stores user's own contact information for tools
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS user_details (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    phone_number TEXT,
+                    email_password_hash TEXT,
+                    backup_email TEXT,
+                    address TEXT,
+                    notes TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users (id),
+                    UNIQUE(user_id)
+                )
+            """
+            )
+
+            conn.commit()
+            logging.info("Database initialized successfully")
+
+    def hash_password(self, password: str) -> str:
+        """Hash password using SHA256"""
+        return hashlib.sha256(password.encode()).hexdigest()
+
+    def verify_password(self, password: str, password_hash: str) -> bool:
+        """Verify password against hash"""
+        return hashlib.sha256(password.encode()).hexdigest() == password_hash
+
+    def create_user(
+        self,
+        name: str,
+        email: str,
+        password: str,
+        timezone: str = "UTC",
+        language: str = "en",
+    ) -> Optional[int]:
+        """Create a new user"""
+        try:
+            password_hash = self.hash_password(password)
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    INSERT INTO users (name, email, password_hash, timezone, language)
+                    VALUES (?, ?, ?, ?, ?)
+                """,
+                    (name, email, password_hash, timezone, language),
+                )
+                conn.commit()
+                user_id = cursor.lastrowid
+                logging.info(f"User created successfully: {email}")
+                return user_id
+        except sqlite3.IntegrityError:
+            logging.error(f"User with email {email} already exists")
+            return None
+        except Exception as e:
+            logging.error(f"Error creating user: {e}")
+            return None
+
+    def authenticate_user(self, email: str, password: str) -> Optional[Dict[str, Any]]:
+        """Authenticate user and return user data"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    SELECT id, name, email, password_hash, timezone, language
+                    FROM users WHERE email = ?
+                """,
+                    (email,),
+                )
+                user = cursor.fetchone()
+
+                if user and self.verify_password(password, user[3]):
+                    return {
+                        "id": user[0],
+                        "name": user[1],
+                        "email": user[2],
+                        "timezone": user[4],
+                        "language": user[5],
+                    }
+                return None
+        except Exception as e:
+            logging.error(f"Error authenticating user: {e}")
+            return None
+
+    def get_user_by_id(self, user_id: int) -> Optional[Dict[str, Any]]:
+        """Get user by ID"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    SELECT id, name, email, timezone, language, created_at
+                    FROM users WHERE id = ?
+                """,
+                    (user_id,),
+                )
+                user = cursor.fetchone()
+
+                if user:
+                    return {
+                        "id": user[0],
+                        "name": user[1],
+                        "email": user[2],
+                        "timezone": user[3],
+                        "language": user[4],
+                        "created_at": user[5],
+                    }
+                return None
+        except Exception as e:
+            logging.error(f"Error getting user: {e}")
+            return None
+
+    def set_user_details(
+        self,
+        user_id: int,
+        phone_number: str = None,
+        email_password: str = None,
+        backup_email: str = None,
+        address: str = None,
+        notes: str = None,
+    ) -> bool:
+        """Set or update user details"""
+        try:
+            # Hash email password if provided
+            email_password_hash = None
+            if email_password:
+                email_password_hash = self.hash_password(email_password)
+
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+
+                # Check if user details already exist
+                cursor.execute(
+                    "SELECT id FROM user_details WHERE user_id = ?", (user_id,)
+                )
+                existing = cursor.fetchone()
+
+                if existing:
+                    # Update existing record
+                    update_fields = []
+                    update_values = []
+
+                    if phone_number is not None:
+                        update_fields.append("phone_number = ?")
+                        update_values.append(phone_number)
+                    if email_password_hash is not None:
+                        update_fields.append("email_password_hash = ?")
+                        update_values.append(email_password_hash)
+                    if backup_email is not None:
+                        update_fields.append("backup_email = ?")
+                        update_values.append(backup_email)
+                    if address is not None:
+                        update_fields.append("address = ?")
+                        update_values.append(address)
+                    if notes is not None:
+                        update_fields.append("notes = ?")
+                        update_values.append(notes)
+
+                    if update_fields:
+                        update_fields.append("updated_at = CURRENT_TIMESTAMP")
+                        update_values.append(user_id)
+
+                        query = f"UPDATE user_details SET {', '.join(update_fields)} WHERE user_id = ?"
+                        cursor.execute(query, update_values)
+                else:
+                    # Insert new record
+                    cursor.execute(
+                        """
+                        INSERT INTO user_details 
+                        (user_id, phone_number, email_password_hash, backup_email, address, notes)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                        (
+                            user_id,
+                            phone_number,
+                            email_password_hash,
+                            backup_email,
+                            address,
+                            notes,
+                        ),
+                    )
+
+                conn.commit()
+                return True
+        except Exception as e:
+            logging.error(f"Error setting user details: {e}")
+            return False
+
+    def get_user_details(self, user_id: int) -> Optional[Dict[str, Any]]:
+        """Get user details"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    SELECT phone_number, backup_email, address, notes, created_at, updated_at
+                    FROM user_details WHERE user_id = ?
+                """,
+                    (user_id,),
+                )
+                details = cursor.fetchone()
+
+                if details:
+                    return {
+                        "phone_number": details[0],
+                        "backup_email": details[1],
+                        "address": details[2],
+                        "notes": details[3],
+                        "created_at": details[4],
+                        "updated_at": details[5],
+                    }
+                return None
+        except Exception as e:
+            logging.error(f"Error getting user details: {e}")
+            return None
+
+    def get_user_email_password(self, user_id: int) -> Optional[str]:
+        """Get user's email password (for tools to use)"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    SELECT email_password_hash FROM user_details WHERE user_id = ?
+                """,
+                    (user_id,),
+                )
+                result = cursor.fetchone()
+
+                if result and result[0]:
+                    # Note: In a real implementation, you'd decrypt this
+                    # For now, we'll return the hash (this needs proper encryption/decryption)
+                    logging.warning(
+                        "Email password retrieval needs proper encryption implementation"
+                    )
+                    return result[0]
+                return None
+        except Exception as e:
+            logging.error(f"Error getting email password: {e}")
+            return None
+
+
+# Initialize database instance
+db = UserDatabase()
