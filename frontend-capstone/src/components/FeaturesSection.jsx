@@ -1,5 +1,5 @@
 import React from "react";
-import { Languages, MessageCircle, Mic, Globe, CloudSun, Newspaper, Mail, Calendar, Folder, Search, Bot, Smile, Star, UserCheck } from "lucide-react";
+import { MessageCircle, Mic, Globe, CloudSun, Newspaper, Mail, Calendar, Folder, Search, Bot, Smile, Star, UserCheck, Languages } from "lucide-react";
 
 const features = [
   {

@@ -1,13 +1,17 @@
 import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Mic, Brain, Zap, BookOpen } from "lucide-react";
 
 export default function HeroSection() {
   const [micState, setMicState] = useState("idle"); // idle | listening | processing
+  const navigate = useNavigate();
 
   const handleMicClick = () => {
-    if (micState === "idle") setMicState("listening");
-    else if (micState === "listening") setMicState("processing");
-    else setMicState("idle");
+    setMicState("listening");
+    setTimeout(() => {
+      setMicState("idle");
+      navigate("/chat");
+    }, 500); // Simulate listening, then navigate
   };
 
   const micLabel =
@@ -45,9 +49,18 @@ export default function HeroSection() {
               )}
             </button>
             <div className="flex gap-3 mt-8">
-              <button className="px-4 py-2 rounded-lg bg-background-glass border border-accent-neon/30 text-accent-neon font-medium shadow hover:bg-accent-neon/10 transition">What's the weather?</button>
-              <button className="px-4 py-2 rounded-lg bg-background-glass border border-accent-neon/30 text-accent-neon font-medium shadow hover:bg-accent-neon/10 transition">Set a reminder</button>
-              <button className="px-4 py-2 rounded-lg bg-background-glass border border-accent-neon/30 text-accent-neon font-medium shadow hover:bg-accent-neon/10 transition">Latest news</button>
+              <button
+                className="px-4 py-2 rounded-lg bg-background-glass border border-accent-neon/30 text-accent-neon font-medium shadow hover:bg-accent-neon/10 transition"
+                onClick={() => navigate("/chat", { state: { prompt: "What's the weather?" } })}
+              >What's the weather?</button>
+              <button
+                className="px-4 py-2 rounded-lg bg-background-glass border border-accent-neon/30 text-accent-neon font-medium shadow hover:bg-accent-neon/10 transition"
+                onClick={() => navigate("/chat", { state: { prompt: "Set a reminder" } })}
+              >Set a reminder</button>
+              <button
+                className="px-4 py-2 rounded-lg bg-background-glass border border-accent-neon/30 text-accent-neon font-medium shadow hover:bg-accent-neon/10 transition"
+                onClick={() => navigate("/chat", { state: { prompt: "Latest news" } })}
+              >Latest news</button>
             </div>
           </div>
           {/* Feature Highlights */}
@@ -70,6 +83,10 @@ export default function HeroSection() {
           </div>
         </div>
       </div>
+
+
     </section>
   );
 }
+
+

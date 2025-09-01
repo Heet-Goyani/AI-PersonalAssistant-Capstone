@@ -10,10 +10,10 @@ function App() {
   return (
     <div className="min-h-screen bg-background-DEFAULT text-foreground-DEFAULT font-sans">
       <HeroSection />
-  <FeaturesSection />
-  <AnalyticsSection />
-  <TechStackSection />
-  <FooterSection />
+      <FeaturesSection />
+      <AnalyticsSection />
+      <TechStackSection />
+      <FooterSection />
     </div>
   );
 }
