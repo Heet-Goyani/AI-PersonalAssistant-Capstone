@@ -12,3 +12,5 @@ uvicorn[standard]
 pydantic
 python-jose[cryptography]
 pyjwt
+cryptography
+ddgs

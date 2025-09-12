@@ -13,6 +13,12 @@ import logging
 from database import db
 from models import UserCreate, UserLogin, UserDetails, TokenResponse
 
+# Configure logging
+logging.basicConfig(
+    level=logging.DEBUG, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger(__name__)
+
 load_dotenv()
 
 app = FastAPI(title="Friday AI Assistant API", version="1.0.0")
@@ -35,27 +41,80 @@ JWT_EXPIRATION_HOURS = 24
 
 # JWT utility functions
 def create_access_token(data: dict):
+    logging.debug("=== JWT Token Creation Started ===")
+    logging.debug(f"Input data: {data}")
+
     to_encode = data.copy()
+
+    # SOLUTION: Ensure 'sub' field is always a string (JWT standard requirement)
+    if "sub" in to_encode:
+        original_sub = to_encode["sub"]
+        to_encode["sub"] = str(original_sub)  # Convert to string
+        logging.debug(
+            f"Converting subject from {type(original_sub).__name__} '{original_sub}' to string '{to_encode['sub']}'"
+        )
+    else:
+        logging.warning("No 'sub' field found in token data")
+
     expire = datetime.utcnow() + timedelta(hours=JWT_EXPIRATION_HOURS)
     to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, JWT_SECRET, algorithm=JWT_ALGORITHM)
-    return encoded_jwt
+    logging.debug(f"Token payload before encoding: {to_encode}")
+
+    try:
+        encoded_jwt = jwt.encode(to_encode, JWT_SECRET, algorithm=JWT_ALGORITHM)
+        logging.debug(f"Generated token successfully")
+        return encoded_jwt
+    except Exception as e:
+        logging.error(f"Error creating JWT token: {e}")
+        raise
 
 
 def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
     try:
+        # Decode token
         payload = jwt.decode(
             credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM]
         )
-        user_id: int = payload.get("sub")
-        if user_id is None:
+        logging.debug(f"JWT payload decoded successfully: {payload}")
+
+        # SOLUTION: Extract string subject and convert back to integer for database lookup
+        user_id_str = payload.get("sub")
+        logging.debug(f"Extracted user_id (string) from token: {user_id_str}")
+
+        if user_id_str is None:
+            logging.error("No user ID found in token")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Could not validate credentials",
+                detail="No user ID in token",
                 headers={"WWW-Authenticate": "Bearer"},
             )
+
+        # Convert string user_id back to integer for database operations
+        try:
+            user_id = int(user_id_str)
+            logging.debug(f"Converted user_id to integer: {user_id}")
+        except (ValueError, TypeError) as e:
+            logging.error(f"Could not convert user_id '{user_id_str}' to integer: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid user ID format in token",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
         return user_id
-    except jwt.PyJWTError:
+
+    except jwt.InvalidTokenError as e:
+        logging.error(f"Invalid JWT token: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Invalid token: {str(e)}",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    except HTTPException:
+        # Re-raise HTTPException as is
+        raise
+    except Exception as e:
+        logging.error(f"Unexpected error in token verification: {e}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Could not validate credentials",
@@ -204,6 +263,20 @@ async def list_rooms(user_id: int = Depends(verify_token)):
     rooms = await get_rooms()
     return {"rooms": rooms}
 
+
+# Debug endpoints
+@app.get("/debug/create-test-token")
+async def debug_create_test_token():
+    """Debug endpoint to create a test token"""
+    test_payload = {"sub": "1", "test": True}  # Use string for sub (JWT standard)
+    token = create_access_token(test_payload)
+    return {"token": token, "payload": test_payload}
+
+
+@app.get("/debug/verify-test-token")
+async def debug_verify_test_token(user_id: int = Depends(verify_token)):
+    """Debug endpoint to verify token"""
+    return {"message": "Token verified successfully", "user_id": user_id}
 
 
 @app.get("/")

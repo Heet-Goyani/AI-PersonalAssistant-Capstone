@@ -4,11 +4,20 @@ import os
 from datetime import datetime
 from typing import Optional, Dict, Any
 import logging
+from cryptography.fernet import Fernet
+import base64
+from dotenv import load_dotenv
+
+load_dotenv()
 
 
 class UserDatabase:
     def __init__(self, db_path: str = "friday_users.db"):
         self.db_path = db_path
+        self.secret_key = os.getenv("JWT_SECRET", "your-secret-key-change-this")
+        self.cipher = Fernet(
+            base64.urlsafe_b64encode(self.secret_key[:32].encode().ljust(32, b"\0"))
+        )
         self.init_database()
 
     def init_database(self):
@@ -61,6 +70,14 @@ class UserDatabase:
     def verify_password(self, password: str, password_hash: str) -> bool:
         """Verify password against hash"""
         return hashlib.sha256(password.encode()).hexdigest() == password_hash
+
+    def encrypt_password(self, password: str) -> str:
+        """Encrypt email password"""
+        return self.cipher.encrypt(password.encode()).decode()
+
+    def decrypt_password(self, encrypted_password: str) -> str:
+        """Decrypt email password"""
+        return self.cipher.decrypt(encrypted_password.encode()).decode()
 
     def create_user(
         self,
@@ -162,7 +179,7 @@ class UserDatabase:
             # Hash email password if provided
             email_password_hash = None
             if email_password:
-                email_password_hash = self.hash_password(email_password)
+                email_password_hash = self.encrypt_password(email_password)
 
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
@@ -231,7 +248,7 @@ class UserDatabase:
                 cursor = conn.cursor()
                 cursor.execute(
                     """
-                    SELECT phone_number, backup_email, address, notes, created_at, updated_at
+                    SELECT phone_number, email_password_hash, backup_email, address, notes, created_at, updated_at
                     FROM user_details WHERE user_id = ?
                 """,
                     (user_id,),
@@ -239,13 +256,21 @@ class UserDatabase:
                 details = cursor.fetchone()
 
                 if details:
+                    email_password = None
+                    if details[1]:  # email_password_hash exists
+                        try:
+                            email_password = self.decrypt_password(details[1])
+                        except:
+                            email_password = None
+
                     return {
                         "phone_number": details[0],
-                        "backup_email": details[1],
-                        "address": details[2],
-                        "notes": details[3],
-                        "created_at": details[4],
-                        "updated_at": details[5],
+                        "email_password": email_password,
+                        "backup_email": details[2],
+                        "address": details[3],
+                        "notes": details[4],
+                        "created_at": details[5],
+                        "updated_at": details[6],
                     }
                 return None
         except Exception as e:
@@ -266,12 +291,7 @@ class UserDatabase:
                 result = cursor.fetchone()
 
                 if result and result[0]:
-                    # Note: In a real implementation, you'd decrypt this
-                    # For now, we'll return the hash (this needs proper encryption/decryption)
-                    logging.warning(
-                        "Email password retrieval needs proper encryption implementation"
-                    )
-                    return result[0]
+                    return self.decrypt_password(result[0])
                 return None
         except Exception as e:
             logging.error(f"Error getting email password: {e}")
