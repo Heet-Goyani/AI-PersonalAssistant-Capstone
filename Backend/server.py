@@ -1,5 +1,6 @@
 import os
 import uuid
+import sqlite3
 from fastapi import FastAPI, HTTPException, Depends, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
@@ -277,6 +278,77 @@ async def debug_create_test_token():
 async def debug_verify_test_token(user_id: int = Depends(verify_token)):
     """Debug endpoint to verify token"""
     return {"message": "Token verified successfully", "user_id": user_id}
+
+
+# Chat history endpoints
+@app.get("/chat/sessions")
+async def get_user_chat_sessions(user_id: int = Depends(verify_token), limit: int = 50):
+    """Get user's chat sessions"""
+    try:
+        sessions = db.get_user_sessions(user_id, limit)
+        return {"sessions": sessions, "count": len(sessions)}
+    except Exception as e:
+        logging.error(f"Error getting user sessions: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve chat sessions",
+        )
+
+
+@app.get("/chat/session/{session_id}/messages")
+async def get_session_messages(
+    session_id: str, user_id: int = Depends(verify_token), limit: int = 100
+):
+    """Get messages for a specific chat session"""
+    try:
+        messages = db.get_chat_messages(user_id, session_id, limit)
+        return {"messages": messages, "count": len(messages)}
+    except Exception as e:
+        logging.error(f"Error getting session messages: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve session messages",
+        )
+
+
+@app.get("/chat/messages")
+async def get_all_user_messages(user_id: int = Depends(verify_token), limit: int = 200):
+    """Get all messages for a user across all sessions"""
+    try:
+        messages = db.get_chat_messages(user_id, None, limit)
+        return {"messages": messages, "count": len(messages)}
+    except Exception as e:
+        logging.error(f"Error getting user messages: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve user messages",
+        )
+
+
+@app.delete("/chat/session/{session_id}")
+async def delete_chat_session(session_id: str, user_id: int = Depends(verify_token)):
+    """Delete a chat session and all its messages"""
+    try:
+        # First, delete all messages for this session
+        with sqlite3.connect(db.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "DELETE FROM chat_messages WHERE user_id = ? AND session_id = ?",
+                (user_id, session_id),
+            )
+            cursor.execute(
+                "DELETE FROM chat_sessions WHERE user_id = ? AND session_id = ?",
+                (user_id, session_id),
+            )
+            conn.commit()
+
+        return {"message": "Chat session deleted successfully"}
+    except Exception as e:
+        logging.error(f"Error deleting chat session: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to delete chat session",
+        )
 
 
 @app.get("/")
