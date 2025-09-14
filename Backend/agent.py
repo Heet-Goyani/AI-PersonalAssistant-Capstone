@@ -17,9 +17,48 @@ import logging
 import json
 from datetime import datetime
 from database import UserDatabase
+from typing import Callable
 
 load_dotenv()
 
+
+# Event-driven session management
+'''class SessionEventManager:
+    def __init__(self):
+        self.disconnect_callbacks = []
+
+    def register_disconnect_callback(self, callback: Callable):
+        """Register a callback function to be called on session disconnect"""
+        logging.info("Registering disconnect callback")
+        self.disconnect_callbacks.append(callback)
+
+    def trigger_disconnect(self, session_id: str):
+        """Trigger all registered disconnect callbacks with session_id"""
+        logging.info(f"Triggering disconnect for session: {session_id}")
+        for callback in self.disconnect_callbacks:
+            try:
+                callback(session_id)
+            except Exception as e:
+                logging.error(f"Disconnect callback failed: {e}")
+
+
+# Placeholder import for external module
+try:
+    # TODO: Replace with actual module import when implemented
+    # from your_external_module import handle_session_disconnect
+    def handle_session_disconnect(session_id: str):
+        """Placeholder function for handling session disconnects"""
+        logging.info(f"Session disconnect handler called for session: {session_id}")
+        # TODO: Implement actual disconnect handling logic
+        pass
+
+except ImportError as e:
+    logging.warning(f"External disconnect handler module not available: {e}")
+
+    def handle_session_disconnect(session_id: str):
+        logging.info(f"Placeholder disconnect handler called for session: {session_id}")
+
+'''
 # Initialize database
 db = UserDatabase()
 
@@ -47,26 +86,28 @@ def extract_user_id_from_context(ctx: agents.JobContext) -> int:
     user_id = None
 
     # Try to get user_id from room metadata
-    if ctx.room.metadata:
+    if ctx.room.metadata and isinstance(ctx.room.metadata, (str, bytes, bytearray)):
         try:
             metadata = json.loads(ctx.room.metadata)
             user_id = metadata.get("user_id")
             if user_id:
                 logging.info(f"Found user_id {user_id} in room metadata")
                 return int(user_id)
-        except (json.JSONDecodeError, ValueError) as e:
+        except (json.JSONDecodeError, ValueError, TypeError) as e:
             logging.warning(f"Failed to parse room metadata: {e}")
 
     # Try to get user_id from participants metadata
     for participant in ctx.room.remote_participants.values():
         try:
-            if participant.metadata:
+            if participant.metadata and isinstance(
+                participant.metadata, (str, bytes, bytearray)
+            ):
                 metadata = json.loads(participant.metadata)
                 user_id = metadata.get("user_id")
                 if user_id:
                     logging.info(f"Found user_id {user_id} in participant metadata")
                     return int(user_id)
-        except (json.JSONDecodeError, ValueError) as e:
+        except (json.JSONDecodeError, ValueError, TypeError) as e:
             logging.warning(f"Failed to parse participant metadata: {e}")
 
     # Default fallback - you might want to handle this differently
@@ -102,6 +143,10 @@ async def entrypoint(ctx: agents.JobContext):
 
     # Create session_id based on room name
     session_id = f"room_{ctx.room.name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+
+    # Initialize session event manager
+    # event_manager = SessionEventManager()
+    # event_manager.register_disconnect_callback(handle_session_disconnect)
 
     session = AgentSession()
 
@@ -148,7 +193,7 @@ async def entrypoint(ctx: agents.JobContext):
             if hasattr(item, "id"):
                 metadata["item_id"] = item.id
 
-            print("\n\n Content ::"+content+"\n\n")
+            print("\n\n Content ::" + content + "\n\n")
             # Save to database
             save_chat_message(
                 user_id=user_id,
@@ -248,6 +293,9 @@ async def entrypoint(ctx: agents.JobContext):
             db.end_chat_session(user_id=user_id, session_id=session_id)
         except Exception as e:
             logging.error(f"Failed to end chat session: {e}")
+
+        # Trigger session disconnect event
+        # event_manager.trigger_disconnect(session_id)
 
 
 if __name__ == "__main__":

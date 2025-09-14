@@ -14,3 +14,7 @@ python-jose[cryptography]
 pyjwt
 cryptography
 ddgs
+google-generativeai
+streamlit>=1.28.0
+pandas>=1.5.0
+plotly>=5.15.0

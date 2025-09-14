@@ -109,6 +109,78 @@ class UserDatabase:
             """
             )
 
+            # Message analytics table - stores detailed message analysis
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS message_analytics (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    session_id TEXT NOT NULL,
+                    message TEXT NOT NULL,
+                    role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'system')),
+                    sequence_number INTEGER NOT NULL,
+                    message_length INTEGER NOT NULL,
+                    sentiment_score REAL,
+                    sentiment_label TEXT CHECK (sentiment_label IN ('positive', 'neutral', 'negative')),
+                    emotion_label TEXT,
+                    toxicity_flag BOOLEAN DEFAULT 0,
+                    contains_keywords TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users (id),
+                    FOREIGN KEY (user_id, session_id) REFERENCES chat_sessions (user_id, session_id)
+                )
+            """
+            )
+
+            # Create indexes for message_analytics table
+            cursor.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_message_analytics_user_session 
+                ON message_analytics(user_id, session_id)
+            """
+            )
+
+            cursor.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_message_analytics_sentiment 
+                ON message_analytics(sentiment_label, sentiment_score)
+            """
+            )
+
+            # Log inserts table - tracks unprocessed chat messages for analytics
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS log_inserts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    chat_message_id INTEGER NOT NULL,
+                    inserted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    processed BOOLEAN DEFAULT 0,
+                    FOREIGN KEY (chat_message_id) REFERENCES chat_messages (id),
+                    UNIQUE(chat_message_id)
+                )
+            """
+            )
+
+            # Create index for log_inserts table
+            cursor.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_log_inserts_processed 
+                ON log_inserts(processed, inserted_at)
+            """
+            )
+
+            # Create trigger to automatically insert into log_inserts when new chat_messages are added
+            cursor.execute(
+                """
+                CREATE TRIGGER IF NOT EXISTS trigger_log_chat_message_inserts
+                AFTER INSERT ON chat_messages
+                BEGIN
+                    INSERT OR IGNORE INTO log_inserts (chat_message_id, inserted_at, processed)
+                    VALUES (NEW.id, CURRENT_TIMESTAMP, 0);
+                END;
+            """
+            )
+
             conn.commit()
             logging.info("Database initialized successfully")
 
@@ -510,6 +582,230 @@ class UserDatabase:
         except Exception as e:
             logging.error(f"Error getting user sessions: {e}")
             return []
+
+    def save_message_analytics(
+        self,
+        user_id: int,
+        session_id: str,
+        message: str,
+        role: str,
+        sequence_number: int,
+        message_length: int = None,
+        sentiment_score: float = None,
+        sentiment_label: str = None,
+        emotion_label: str = None,
+        toxicity_flag: bool = False,
+        contains_keywords: list = None,
+    ) -> bool:
+        """Save message analytics to database"""
+        try:
+            # Calculate message length if not provided
+            if message_length is None:
+                message_length = len(message.split())  # Word count
+
+            # Convert keywords list to JSON string
+            keywords_json = None
+            if contains_keywords:
+                import json
+
+                keywords_json = json.dumps(contains_keywords)
+
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    INSERT INTO message_analytics (
+                        user_id, session_id, message, role, sequence_number,
+                        message_length, sentiment_score, sentiment_label,
+                        emotion_label, toxicity_flag, contains_keywords
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                    (
+                        user_id,
+                        session_id,
+                        message,
+                        role,
+                        sequence_number,
+                        message_length,
+                        sentiment_score,
+                        sentiment_label,
+                        emotion_label,
+                        toxicity_flag,
+                        keywords_json,
+                    ),
+                )
+                conn.commit()
+                logging.info(
+                    f"Saved message analytics for user {user_id}, session {session_id}"
+                )
+                return True
+        except Exception as e:
+            logging.error(f"Error saving message analytics: {e}")
+            return False
+
+    def get_unprocessed_message_ids(self) -> list:
+        """Get unprocessed chat message IDs from log_inserts"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    SELECT chat_message_id 
+                    FROM log_inserts 
+                    WHERE processed = 0
+                    ORDER BY inserted_at ASC
+                """
+                )
+                return [row[0] for row in cursor.fetchall()]
+        except Exception as e:
+            logging.error(f"Error getting unprocessed message IDs: {e}")
+            return []
+
+    def get_chat_messages_by_ids(self, message_ids: list) -> list:
+        """Get chat messages by their IDs"""
+        if not message_ids:
+            return []
+
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                placeholders = ",".join("?" * len(message_ids))
+                cursor.execute(
+                    f"""
+                    SELECT id, user_id, session_id, role, content, timestamp, metadata
+                    FROM chat_messages 
+                    WHERE id IN ({placeholders})
+                    ORDER BY timestamp ASC
+                """,
+                    message_ids,
+                )
+
+                messages = []
+                for row in cursor.fetchall():
+                    messages.append(
+                        {
+                            "id": row[0],
+                            "user_id": row[1],
+                            "session_id": row[2],
+                            "role": row[3],
+                            "content": row[4],
+                            "timestamp": row[5],
+                            "metadata": row[6],
+                        }
+                    )
+                return messages
+        except Exception as e:
+            logging.error(f"Error getting chat messages by IDs: {e}")
+            return []
+
+    def mark_messages_processed(self, message_ids: list) -> bool:
+        """Mark message IDs as processed in log_inserts"""
+        if not message_ids:
+            return True
+
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                placeholders = ",".join("?" * len(message_ids))
+                cursor.execute(
+                    f"""
+                    UPDATE log_inserts 
+                    SET processed = 1 
+                    WHERE chat_message_id IN ({placeholders})
+                """,
+                    message_ids,
+                )
+                conn.commit()
+                logging.info(f"Marked {len(message_ids)} messages as processed")
+                return True
+        except Exception as e:
+            logging.error(f"Error marking messages as processed: {e}")
+            return False
+
+    def clear_processed_log_entries(self) -> bool:
+        """Clear processed entries from log_inserts (automatic cleanup after processing)"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM log_inserts WHERE processed = 1")
+                deleted_count = cursor.rowcount
+                conn.commit()
+                logging.info(f"Cleared {deleted_count} processed log entries")
+                return True
+        except Exception as e:
+            logging.error(f"Error clearing processed log entries: {e}")
+            return False
+
+    def clear_all_log_entries(self) -> bool:
+        """Clear all entries from log_inserts table (use with caution)"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM log_inserts")
+                deleted_count = cursor.rowcount
+                conn.commit()
+                logging.info(f"Cleared all {deleted_count} log entries")
+                return True
+        except Exception as e:
+            logging.error(f"Error clearing all log entries: {e}")
+            return False
+
+    def get_analytics_summary(self) -> Dict[str, Any]:
+        """Get summary statistics from message_analytics table"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+
+                # Get total messages analyzed
+                cursor.execute("SELECT COUNT(*) FROM message_analytics")
+                total_messages = cursor.fetchone()[0]
+
+                # Get sentiment distribution
+                cursor.execute(
+                    """
+                    SELECT sentiment_label, COUNT(*) as count
+                    FROM message_analytics 
+                    GROUP BY sentiment_label
+                """
+                )
+                sentiment_dist = {row[0]: row[1] for row in cursor.fetchall()}
+
+                # Get recent analytics (last 50)
+                cursor.execute(
+                    """
+                    SELECT user_id, session_id, message, sentiment_label, 
+                           emotion_label, sentiment_score, created_at
+                    FROM message_analytics 
+                    ORDER BY created_at DESC 
+                    LIMIT 50
+                """
+                )
+                recent_analytics = []
+                for row in cursor.fetchall():
+                    recent_analytics.append(
+                        {
+                            "user_id": row[0],
+                            "session_id": row[1],
+                            "message": row[2],
+                            "sentiment_label": row[3],
+                            "emotion_label": row[4],
+                            "sentiment_score": row[5],
+                            "created_at": row[6],
+                        }
+                    )
+
+                return {
+                    "total_messages": total_messages,
+                    "sentiment_distribution": sentiment_dist,
+                    "recent_analytics": recent_analytics,
+                }
+        except Exception as e:
+            logging.error(f"Error getting analytics summary: {e}")
+            return {
+                "total_messages": 0,
+                "sentiment_distribution": {},
+                "recent_analytics": [],
+            }
 
 
 # Initialize database instance
