@@ -1,4 +1,5 @@
 import { useState, useCallback } from "react";
+import { authFetch } from "../utils/authFetch";
 import { LiveKitRoom, RoomAudioRenderer } from "@livekit/components-react";
 import "@livekit/components-styles";
 import SimpleVoiceAssistant from "./SimpleVoiceAssistant";
@@ -10,7 +11,7 @@ const LiveKitModal = ({ setShowAssistant }) => {
 
   const getToken = useCallback(async (userName) => {
     try {
-      const response = await fetch(
+      const response = await authFetch(
         `/livekit/token?user_name=${encodeURIComponent(userName)}`
       );
       if (!response.ok) {

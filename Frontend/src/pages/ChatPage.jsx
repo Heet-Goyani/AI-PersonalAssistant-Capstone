@@ -1,5 +1,6 @@
 
 import { useState, useCallback } from "react";
+import { authFetch } from "../utils/authFetch";
 import { LiveKitRoom, RoomAudioRenderer } from "@livekit/components-react";
 import "@livekit/components-styles";
 import SimpleVoiceAssistant from "../components/SimpleVoiceAssistant";
@@ -11,16 +12,13 @@ const ChatPage = () => {
 
   const getToken = useCallback(async (userName) => {
     try {
-      const response = await fetch(
+      const response = await authFetch(
         `/livekit/token?user_name=${encodeURIComponent(userName)}`
       );
       if (!response.ok) {
         throw new Error('Failed to fetch LiveKit token');
       }
       const data = await response.json();
-      fetch(`/api/start-bot?room_name=${encodeURIComponent(data.room_name)}`, {
-        method: 'POST'
-      }).catch((err) => console.error('Failed to start bot:', err));
       setToken(data.token);
       setIsSubmittingName(false);
     } catch (error) {

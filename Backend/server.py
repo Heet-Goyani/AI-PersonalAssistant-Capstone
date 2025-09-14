@@ -257,6 +257,39 @@ async def get_livekit_token(
         )
 
 
+# @app.get("/livekit/token")
+# async def get_livekit_token(room_name: Optional[str] = None, user_name: Optional[str] = None):
+#     """Generate LiveKit token for any user (no authentication)"""
+#     if not user_name:
+#         raise HTTPException(status_code=400, detail="user_name is required")
+
+#     if not room_name:
+#         room_name = await generate_room_name()
+
+#     try:
+#         token = (
+#             api.AccessToken(
+#                 os.getenv("LIVEKIT_API_KEY"), os.getenv("LIVEKIT_API_SECRET")
+#             )
+#             .with_identity(user_name)
+#             .with_name(user_name)
+#             .with_grants(api.VideoGrants(room_join=True, room=room_name))
+#         )
+
+#         return {
+#             "token": token.to_jwt(),
+#             "room_name": room_name,
+#             "user_name": user_name,
+#         }
+#     except Exception as e:
+#         logging.error(f"Error generating LiveKit token: {e}")
+#         raise HTTPException(
+#             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+#             detail="Failed to generate LiveKit token",
+#         )
+
+
+
 @app.get("/livekit/rooms")
 async def list_rooms(user_id: int = Depends(verify_token)):
     """List available rooms"""
