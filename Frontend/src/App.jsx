@@ -40,7 +40,7 @@ function App() {
                 transition: 'background 0.2s',
               }}
               aria-label="Open Voice Assistant"
-              onClick={() => setShowAssistant(true)}
+              onClick={() => navigate('/chat')}
             >
               <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="9" y="2" width="6" height="14" rx="3"/>
@@ -181,12 +181,12 @@ function App() {
 
       {/* Analytics Dashboard Preview Section */}
       <section className="w-full flex flex-col items-center py-12">
-        <h3 className="text-3xl md:text-4xl font-bold text-purple-300 mb-2 tracking-wide">Analytics Dashboard Preview</h3>
-        <p className="text-lg text-purple-200 mb-8">Insights into usage, performance, and user behavior.</p>
+        <h3 className="text-3xl md:text-4xl font-bold text-purple-300 mb-2 tracking-wide text-center" style={{ textAlign: "center" }}>Analytics Dashboard Preview</h3>
+        <p className="text-lg text-purple-200 mb-8" style={{ textAlign: "center" }}>Insights into usage, performance, and user behavior.</p>
         {/* Top row stats */}
-        <div style={{ width: '60%', margin: '0 auto', display: 'flex', justifyContent: 'center' }}>
+        <div style={{ width: '60%', margin: '0 auto', display: 'flex', justifyContent: 'center',flexDirection: 'column' }}>
           <div className="flex flex-col md:flex-row gap-6 mb-8 w-full justify-center">
-            <div className="stat-card">
+            <div className="stat-card mt-4">
               <div className="stat-value">1,247</div>
               <div className="stat-label">Total Commands</div>
             </div>
@@ -201,8 +201,8 @@ function App() {
           </div>
         </div>
         {/* Charts/cards row */}
-        <div style={{ width: '60%', margin: '0 auto', display: 'flex', justifyContent: 'center' }}>
-          <div className="flex flex-col md:flex-row gap-8 w-full mb-8 justify-center">
+        <div style={{ width: '60%', margin: '0 auto', display: 'flex', justifyContent: 'center', flexDirection:"column" }}>
+          <div className="flex flex-col md:flex-row gap-8 w-full mb-8 justify-center ">
             {/* Pie Chart Placeholder */}
             <div className="chart-card flex-1">
               <div className="chart-title">Usage Distribution</div>
@@ -261,8 +261,8 @@ function App() {
 
       {/* Technology Stack Section */}
       <section className="w-full flex flex-col items-center py-12">
-        <h3 className="text-3xl md:text-4xl font-bold text-cyan-300 mb-2 tracking-wide">Technology Stack</h3>
-        <p className="text-lg text-cyan-200 mb-8">Built with modern, scalable, and robust technologies.</p>
+        <h3 className="text-3xl md:text-4xl font-bold text-cyan-300 mb-2 tracking-wide" style={{ textAlign: "center" }}>Technology Stack</h3>
+        <p className="text-lg text-cyan-200 mb-8" style={{ textAlign: "center" }}>Built with modern, scalable, and robust technologies.</p>
         <div className="flex flex-wrap justify-center gap-8 w-full max-w-5xl">
           {/* React */}
           <div className="tech-card">
